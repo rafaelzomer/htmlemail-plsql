@@ -556,7 +556,7 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         table_node := APPEND_NODE('table', exta_node);
         RESET_TABLE(table_node);
         SET_STYLE(table_node, 'background-color: '||g_css_primary_color||'; color: '||g_css_primary_contrast_color||';');
-        CHECK_ATTR_COLORS(node, exta_node);
+        CHECK_ATTR_COLORS(node, table_node);
 
         tr_node := APPEND_NODE('tr', table_node);
 
