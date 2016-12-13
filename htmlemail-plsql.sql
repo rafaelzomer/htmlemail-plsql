@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE HTML_EMAIL AS
+﻿CREATE OR REPLACE PACKAGE HTML_EMAIL AS
     PROCEDURE SEND(
         send_host IN VARCHAR2,
         send_port IN NUMBER DEFAULT 25,
@@ -8,7 +8,8 @@ CREATE OR REPLACE PACKAGE HTML_EMAIL AS
         send_to IN VARCHAR2,
         send_cc IN VARCHAR2 DEFAULT NULL,
         email_title IN VARCHAR2 DEFAULT '-',
-        email_body IN CLOB DEFAULT '-'
+        email_body IN CLOB DEFAULT '-',
+        send_priority NUMBER DEFAULT 5
     );
     PROCEDURE SEND_MESSAGE(
         send_host IN VARCHAR2,
@@ -149,19 +150,14 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
     BEGIN
         aux_node := DBMS_XMLDOM.MAKENODE(DBMS_XMLDOM.CREATEELEMENT(g_doc, l_name));
 
-    --RETURN DBMS_XMLDOM.MAKENODE(DBMS_XMLDOM.CREATETEXTNODE(g_doc, l_content));
         SET_NODE_CONTENT(aux_node, l_content);
 
-        --DBMS_XMLDOM.MAKENODE(DBMS_XMLDOM.CREATETEXTNODE(g_doc, l_content));
-        --DBMS_XMLDOM.SETNODEVALUE(aux_node, l_content);
         RETURN aux_node;
---        RETURN DBMS_XMLDOM.MAKENODE(DBMS_XMLDOM.CREATEELEMENT(g_doc, l_name));
     END;
     FUNCTION CREATE_NODE(l_name VARCHAR2)
     RETURN DBMS_XMLDOM.DOMNODE IS
     BEGIN
         RETURN CREATE_NODE(l_name, null);
-        --RETURN DBMS_XMLDOM.MAKENODE(DBMS_XMLDOM.CREATEELEMENT(g_doc, l_name));
     END;
 
     FUNCTION APPEND_NODE(l_name VARCHAR2, node DBMS_XMLDOM.DOMNODE, l_content CLOB)
@@ -373,6 +369,7 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         IF (attr_lang IS NOT NULL) THEN
             g_locale := attr_lang;
         END IF;
+        
         html_node := PREPEND_NODE('html', node);
         head_node := APPEND_NODE('head', html_node);
         viewport_node := APPEND_NODE('meta', head_node);
@@ -747,7 +744,8 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         send_to IN VARCHAR2,
         send_cc IN VARCHAR2 DEFAULT NULL,
         email_title IN VARCHAR2 DEFAULT '-',
-        email_body IN CLOB DEFAULT '-'
+        email_body IN CLOB DEFAULT '-',
+        send_priority number default 5
     ) IS
         mail_connection UTL_SMTP.CONNECTION;
         l_send_from VARCHAR2(255);
@@ -758,8 +756,10 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         k NUMBER;
         j NUMBER;
         l_step NUMBER := 12000;
+        
     BEGIN
         l_send_from := send_from;
+        
         IF (l_send_from IS NULL) THEN
             l_send_from := send_login;
         END IF;
@@ -769,14 +769,24 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
 
         /* SEND EMAIL */
         mail_connection := UTL_SMTP.OPEN_CONNECTION(send_host, send_port);
-        UTL_SMTP.EHLO (mail_connection, send_host);
-
-        UTL_SMTP.COMMAND(mail_connection, 'AUTH LOGIN');
-        UTL_SMTP.COMMAND(mail_connection,
-        Utl_raw.cast_to_varchar2(Utl_encode.base64_encode(Utl_raw.cast_to_raw(send_login))));
-        UTL_SMTP.COMMAND(mail_connection,
-        Utl_raw.cast_to_varchar2(Utl_encode.base64_encode(Utl_raw.cast_to_raw(send_password))));
-
+        
+        begin
+            UTL_SMTP.EHLO (mail_connection, send_host);
+            exception
+        when others then
+            UTL_SMTP.HELO (mail_connection, send_host);
+        end;    
+        
+        
+        if(send_password is not null)then
+            UTL_SMTP.COMMAND(mail_connection, 'AUTH LOGIN');
+            UTL_SMTP.COMMAND(mail_connection,
+            Utl_raw.cast_to_varchar2(Utl_encode.base64_encode(Utl_raw.cast_to_raw(send_login))));
+            UTL_SMTP.COMMAND(mail_connection,
+            Utl_raw.cast_to_varchar2(Utl_encode.base64_encode(Utl_raw.cast_to_raw(send_password))));
+        end if;
+        
+        
         UTL_SMTP.MAIL(mail_connection, ('<' || send_login || '>'));
         FOR EMAIL IN (SELECT REGEXP_SUBSTR(send_to,'[^;,]+', 1, LEVEL) ENDERECO FROM DUAL
             CONNECT BY REGEXP_SUBSTR(send_to, '[^;,]+', 1, LEVEL) IS NOT NULL)
@@ -784,22 +794,30 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
             UTL_SMTP.RCPT(mail_connection, ('<' || TRIM(EMAIL.ENDERECO) || '>'));
         END LOOP;
 
+
         UTL_SMTP.OPEN_DATA(mail_connection);
+        UTL_SMTP.WRITE_DATA( mail_connection, 'Date : '|| to_char(systimestamp, 'Dy, dd Mon yyyy hh24:mi:ss tzhtzm','NLS_DATE_LANGUAGE=American') || utl_tcp.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, 'From: ' || l_send_from || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, 'Reply-to: ' || l_send_from || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, 'To: ' || send_to || UTL_TCP.CRLF );
+        UTL_SMTP.WRITE_DATA( mail_connection, 'X-Priority: ' || send_priority || utl_tcp.CRLF);
+        UTL_SMTP.WRITE_DATA( mail_connection,  'X-MSMail-Priority: Hight' || utl_tcp.CRLF);
 
+        
         UTL_SMTP.WRITE_DATA( mail_connection, 'Subject: =?ISO-8859-1?Q?' ||
             UTL_RAW.CAST_TO_VARCHAR2(UTL_ENCODE.QUOTED_PRINTABLE_ENCODE(UTL_RAW.CAST_TO_RAW(email_title))) ||
             '?=' || UTL_TCP.CRLF);
+            
         UTL_SMTP.WRITE_DATA( mail_connection, 'MIME-Version: 1.0' || UTL_TCP.CRLF );
+
         UTL_SMTP.WRITE_DATA( mail_connection, 'Content-Type: multipart/mixed; ' || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, ' boundary= "' || l_boundary || '"' || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, UTL_TCP.CRLF );
-
+        
+        
         -- Body
         UTL_SMTP.WRITE_DATA(mail_connection, '--' || l_boundary || UTL_TCP.CRLF );
-        UTL_SMTP.WRITE_DATA(mail_connection, 'Content-Type: text/html;charset=UTF-8' || UTL_TCP.CRLF );
+        UTL_SMTP.WRITE_DATA(mail_connection, 'Content-Type: text/html;charset=ISO-8859-1' || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA(mail_connection, 'Content-Transfer-Encoding: quoted-printable '|| UTL_TCP.CRLF);
         UTL_SMTP.WRITE_DATA(mail_connection, UTL_TCP.CRLF );
 
@@ -856,6 +874,10 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         DBMS_OUTPUT.PUT_LINE('send_from='||l_send_from);
         DBMS_OUTPUT.PUT_LINE('send_to='||send_to);
         DBMS_OUTPUT.PUT_LINE('email_title='||email_title);
+      
+    Exception
+    WHEN OTHERS THEN
+       utl_smtp.quit (mail_connection);        
     END;
 
     PROCEDURE SEND_MESSAGE(
@@ -889,3 +911,4 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         );
     END;
 END HTML_EMAIL;
+/
