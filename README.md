@@ -1,5 +1,5 @@
 # htmlemail-plsql
-a package writen on plsql to easyly send personalized emails
+a package writen on plsql to easily send personalized emails
 
 ## Quick Start
 1. Copy code from [here](https://github.com/rafaelzomer/htmlemail-plsql/blob/master/htmlemail-plsql.sql) and run on your database.
