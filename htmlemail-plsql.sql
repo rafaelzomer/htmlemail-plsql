@@ -777,12 +777,12 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         /* SEND EMAIL */
         mail_connection := UTL_SMTP.OPEN_CONNECTION(send_host, send_port);
 
-        begin
+        BEGIN
             UTL_SMTP.EHLO(mail_connection, send_host);
-            exception
-        when others then
+        EXCEPTION
+        WHEN OTHERS THEN
             UTL_SMTP.HELO(mail_connection, send_host);
-        end;
+        END;
 
 
         if(send_password is not null)then
@@ -882,9 +882,9 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         DBMS_OUTPUT.PUT_LINE('send_to='||send_to);
         DBMS_OUTPUT.PUT_LINE('email_title='||l_email_title);
 
-    Exception
-    WHEN OTHERS THEN
-       utl_smtp.quit (mail_connection);
+        EXCEPTION
+        WHEN OTHERS THEN
+            UTL_SMTP.QUIT(mail_connection);
     END;
 
     PROCEDURE SEND_MESSAGE(
