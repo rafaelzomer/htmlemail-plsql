@@ -369,7 +369,7 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         IF (attr_lang IS NOT NULL) THEN
             g_locale := attr_lang;
         END IF;
-        
+
         html_node := PREPEND_NODE('html', node);
         head_node := APPEND_NODE('head', html_node);
         viewport_node := APPEND_NODE('meta', head_node);
@@ -749,6 +749,7 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
     ) IS
         mail_connection UTL_SMTP.CONNECTION;
         l_send_from VARCHAR2(255);
+        l_email_title VARCHAR2(255);
         output_email CLOB;
         l_boundary varchar2(32) := sys_guid();
         l_blob BLOB;
@@ -756,12 +757,18 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         k NUMBER;
         j NUMBER;
         l_step NUMBER := 12000;
-        
+        l_max_title_size INTEGER := 60;
+
     BEGIN
         l_send_from := send_from;
-        
+        l_email_title := email_title;
+
         IF (l_send_from IS NULL) THEN
             l_send_from := send_login;
+        END IF;
+
+        IF ((l_email_title IS NOT NULL) AND (LENGTH(l_email_title) > l_max_title_size)) THEN
+            l_email_title := SUBSTR(l_email_title, 1, l_max_title_size)||'...';
         END IF;
 
         /* COMPOSE EMAIL */
@@ -769,15 +776,15 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
 
         /* SEND EMAIL */
         mail_connection := UTL_SMTP.OPEN_CONNECTION(send_host, send_port);
-        
+
         begin
-            UTL_SMTP.EHLO (mail_connection, send_host);
+            UTL_SMTP.EHLO(mail_connection, send_host);
             exception
         when others then
-            UTL_SMTP.HELO (mail_connection, send_host);
-        end;    
-        
-        
+            UTL_SMTP.HELO(mail_connection, send_host);
+        end;
+
+
         if(send_password is not null)then
             UTL_SMTP.COMMAND(mail_connection, 'AUTH LOGIN');
             UTL_SMTP.COMMAND(mail_connection,
@@ -785,8 +792,8 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
             UTL_SMTP.COMMAND(mail_connection,
             Utl_raw.cast_to_varchar2(Utl_encode.base64_encode(Utl_raw.cast_to_raw(send_password))));
         end if;
-        
-        
+
+
         UTL_SMTP.MAIL(mail_connection, ('<' || send_login || '>'));
         FOR EMAIL IN (SELECT REGEXP_SUBSTR(send_to,'[^;,]+', 1, LEVEL) ENDERECO FROM DUAL
             CONNECT BY REGEXP_SUBSTR(send_to, '[^;,]+', 1, LEVEL) IS NOT NULL)
@@ -803,18 +810,18 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         UTL_SMTP.WRITE_DATA( mail_connection, 'X-Priority: ' || send_priority || utl_tcp.CRLF);
         UTL_SMTP.WRITE_DATA( mail_connection,  'X-MSMail-Priority: Hight' || utl_tcp.CRLF);
 
-        
+
         UTL_SMTP.WRITE_DATA( mail_connection, 'Subject: =?ISO-8859-1?Q?' ||
-            UTL_RAW.CAST_TO_VARCHAR2(UTL_ENCODE.QUOTED_PRINTABLE_ENCODE(UTL_RAW.CAST_TO_RAW(email_title))) ||
+            UTL_RAW.CAST_TO_VARCHAR2(UTL_ENCODE.QUOTED_PRINTABLE_ENCODE(UTL_RAW.CAST_TO_RAW(l_email_title))) ||
             '?=' || UTL_TCP.CRLF);
-            
+
         UTL_SMTP.WRITE_DATA( mail_connection, 'MIME-Version: 1.0' || UTL_TCP.CRLF );
 
         UTL_SMTP.WRITE_DATA( mail_connection, 'Content-Type: multipart/mixed; ' || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, ' boundary= "' || l_boundary || '"' || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA( mail_connection, UTL_TCP.CRLF );
-        
-        
+
+
         -- Body
         UTL_SMTP.WRITE_DATA(mail_connection, '--' || l_boundary || UTL_TCP.CRLF );
         UTL_SMTP.WRITE_DATA(mail_connection, 'Content-Type: text/html;charset=ISO-8859-1' || UTL_TCP.CRLF );
@@ -873,11 +880,11 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         DBMS_OUTPUT.PUT_LINE('send_password='||send_password);
         DBMS_OUTPUT.PUT_LINE('send_from='||l_send_from);
         DBMS_OUTPUT.PUT_LINE('send_to='||send_to);
-        DBMS_OUTPUT.PUT_LINE('email_title='||email_title);
-      
+        DBMS_OUTPUT.PUT_LINE('email_title='||l_email_title);
+
     Exception
     WHEN OTHERS THEN
-       utl_smtp.quit (mail_connection);        
+       utl_smtp.quit (mail_connection);
     END;
 
     PROCEDURE SEND_MESSAGE(
