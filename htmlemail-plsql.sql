@@ -28,7 +28,6 @@
     PROCEDURE ADD_ATTACHMENT(l_blob BLOB, l_attachment_name VARCHAR2, l_attachment_image VARCHAR2);
 END HTML_EMAIL;
 /
-
 CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
     g_doc DBMS_XMLDOM.DOMDOCUMENT;
     g_body_node DBMS_XMLDOM.DOMNODE;
@@ -882,9 +881,10 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         DBMS_OUTPUT.PUT_LINE('send_to='||send_to);
         DBMS_OUTPUT.PUT_LINE('email_title='||l_email_title);
 
-        EXCEPTION
-        WHEN OTHERS THEN
-            UTL_SMTP.QUIT(mail_connection);
+    EXCEPTION
+    WHEN OTHERS THEN
+       UTL_SMTP.QUIT(mail_connection);
+       raise_application_error( -20001, SQLERRM);
     END;
 
     PROCEDURE SEND_MESSAGE(
@@ -918,4 +918,3 @@ CREATE OR REPLACE PACKAGE BODY HTML_EMAIL AS
         );
     END;
 END HTML_EMAIL;
-/
